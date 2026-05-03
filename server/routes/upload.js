@@ -49,4 +49,63 @@ router.get('/download/:name', (req, res) => {
     res.download(fp);
 });
 
+// Online Streaming Relay Map: shareCode -> { res: ResponseObject, timer: Timeout }
+const activeRelays = new Map();
+
+// Sender initiates relay
+router.post('/relay/:shareCode', (req, res) => {
+    const { shareCode } = req.params;
+    console.log(`📡 Relay initiated for code: ${shareCode}`);
+
+    // Wait for receiver to connect (max 2 minutes)
+    let timeout = setTimeout(() => {
+        if (activeRelays.has(shareCode)) {
+            const relay = activeRelays.get(shareCode);
+            if (relay.res) relay.res.status(408).send('Relay timed out');
+            activeRelays.delete(shareCode);
+        }
+    }, 120000);
+
+    activeRelays.set(shareCode, { senderReq: req, senderRes: res, timeout });
+
+    req.on('close', () => {
+        console.log(`📡 Sender closed for code: ${shareCode}`);
+        const relay = activeRelays.get(shareCode);
+        if (relay && relay.receiverRes) relay.receiverRes.end();
+        activeRelays.delete(shareCode);
+    });
+});
+
+// Receiver connects to relay
+router.get('/relay/:shareCode', (req, res) => {
+    const { shareCode } = req.params;
+    const relay = activeRelays.get(shareCode);
+
+    if (!relay || !relay.senderReq) {
+        return res.status(404).send('Share code not found or sender not ready');
+    }
+
+    console.log(`📡 Receiver connected for code: ${shareCode}`);
+    
+    // Clear timeout as transfer is starting
+    clearTimeout(relay.timeout);
+
+    // Set headers for download
+    res.setHeader('Content-Disposition', `attachment; filename="shared-file"`);
+    res.setHeader('Content-Type', 'application/octet-stream');
+
+    // Pipe sender request directly to receiver response
+    relay.senderReq.pipe(res);
+
+    relay.senderReq.on('end', () => {
+        relay.senderRes.status(200).json({ success: true });
+        activeRelays.delete(shareCode);
+    });
+
+    req.on('close', () => {
+        relay.senderReq.destroy();
+        activeRelays.delete(shareCode);
+    });
+});
+
 module.exports = router;

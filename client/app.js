@@ -225,10 +225,65 @@ fileInput.addEventListener('change', () => {
 });
 
 
+// --- ONLINE SHARE (PUBLIC RELAY) ---
+
+function generateShareCode() {
+    if (fileInput.files.length === 0) {
+        alert("Please select a file first!");
+        return;
+    }
+
+    const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+    const file = fileInput.files[0];
+    const password = document.getElementById('transfer-password').value || null;
+
+    alert(`Share Code Generated: ${code}\n\nShare this code with the receiver. Keep this window open until transfer starts.`);
+    
+    // Add to UI
+    addTransferItem(file.name, file.size, 'sending');
+    updateTransferStatus(file.name, "Waiting for receiver...");
+
+    // Start Relay Upload (Wait for pipe)
+    const url = `/api/relay/${code}`;
+    
+    fetch(url, {
+        method: 'POST',
+        body: file
+    }).then(res => {
+        if (res.ok) {
+            updateTransferStatus(file.name, "Shared successfully!");
+        } else {
+            updateTransferStatus(file.name, "Relay failed or timed out.");
+        }
+    }).catch(err => {
+        console.error("Relay error:", err);
+        updateTransferStatus(file.name, "Connection lost.");
+    });
+}
+
+function receiveByCode() {
+    const code = document.getElementById('share-code-input').value.trim().toUpperCase();
+    if (!code) {
+        alert("Please enter a share code.");
+        return;
+    }
+
+    const url = `/api/relay/${code}`;
+    addTransferItem("Requesting file...", 0, 'receiving');
+
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = "downloading..."; 
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    updateTransferStatus("Requesting file...", "Transfer started!");
+}
+
 // HTTP Fallback (If WebRTC fails to establish)
 function httpFileUpload(file, targetId, password) {
-    alert("Using HTTP server relay...");
-
+    console.log("Using HTTP server relay fallback...");
     addTransferItem(file.name, file.size, 'sending');
     const formData = new FormData();
     formData.append('file', file);
@@ -247,38 +302,35 @@ function httpFileUpload(file, targetId, password) {
         if (xhr.status === 200) {
             updateTransferStatus(file.name, 'Uploaded to server!');
             const res = JSON.parse(xhr.responseText);
-            // Notify target to download via socket
             socket.emit('webrtc-offer', {
                 target: targetId,
                 offer: { type: 'http-fallback', file: res.file, originalName: res.originalName, password: password }
             });
         }
     };
-
     xhr.send(formData);
 }
 
-// Hack: hijack the offer to support HTTP fallback notification
-const originalHandleOffer = handleReceiveOffer;
+// Signal Handler
 async function customOfferHandle(sender, offer) {
     if (offer.type === 'http-fallback') {
         const displayName = offer.originalName || offer.file;
         alert("Received file via HTTP Relay!");
         addTransferItem(offer.file, 0, 'receiving');
         updateTransferStatus(offer.file, 'Ready for download');
-
-        if (offer.password) {
-            const userInput = prompt(`File "${displayName}" is locked! Enter password:`);
-            if (userInput !== offer.password) {
-                alert("Incorrect password! Cannot open the file.");
-                updateTransferStatus(offer.file, 'Auth Failed');
-                return;
-            }
-        }
-
         makeTransferDownloadable(offer.file, `/api/download/${offer.file}`, displayName);
+    } else if (offer.type === 'public-relay-announce') {
+        console.log("Public relay available:", offer.code);
     } else {
-        await originalHandleOffer(sender, offer);
+        // Fallback to original WebRTC handle from webrtc.js
+        if (window.handleReceiveOffer) {
+            await window.handleReceiveOffer(sender, offer);
+        }
     }
 }
-window.handleReceiveOffer = customOfferHandle; // override global
+
+// Override or extend the socket listener
+socket.off('webrtc-offer'); // Clear original if exists
+socket.on('webrtc-offer', async (data) => {
+    await customOfferHandle(data.sender, data.offer);
+});

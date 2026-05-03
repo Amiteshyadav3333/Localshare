@@ -51,6 +51,17 @@
                     <li class="empty-state">No other devices found on this network.</li>
                 </ul>
             </div>
+
+            <div class="online-share-section" style="margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--card-border);">
+                <h3>Online Share (Public)</h3>
+                <p>Transfer files across any network.</p>
+                <div class="code-input-group" style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+                    <input type="text" id="share-code-input" placeholder="Enter Share Code" 
+                        style="flex: 1; padding: 0.5rem; border-radius: 0.5rem; background: rgba(0,0,0,0.2); border: 1px solid var(--card-border); color: white; outline: none;">
+                    <button class="btn-primary" onclick="receiveByCode()" style="padding: 0.5rem 1rem;">Join</button>
+                </div>
+                <button class="btn-secondary" onclick="generateShareCode()" style="width: 100%; margin-top: 0.5rem; background: rgba(255,255,255,0.05); color: white; border: 1px solid var(--card-border); padding: 0.75rem; border-radius: 0.5rem; cursor: pointer;">Generate Share Link</button>
+            </div>
         </aside>
 
         <!-- Main Workspace: Upload & Transfer UI -->

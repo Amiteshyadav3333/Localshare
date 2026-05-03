@@ -20,25 +20,29 @@ app.use(express.json());
 const uploadRoute = require('./routes/upload');
 app.use('/api', uploadRoute);
 
-// Auto-detect Local IP Address
-function getLocalIP() {
+// Auto-detect All Local IP Addresses
+function getAllLocalIPs() {
+    const ips = [];
     const nets = os.networkInterfaces();
     for (const name of Object.keys(nets)) {
         for (const net of nets[name]) {
-            // skip over non-IPv4 and internal (i.e. 127.0.0.1) addresses
             if (net.family === 'IPv4' && !net.internal) {
-                return net.address;
+                ips.push(net.address);
             }
         }
     }
-    return 'localhost';
+    return ips.length > 0 ? ips : ['localhost'];
 }
 
 const PORT = process.env.PORT || 3000;
-const IP = getLocalIP();
+const IPs = getAllLocalIPs();
 
 server.listen(PORT, '0.0.0.0', () => {
     console.log(`\n🚀 LocalShare Server Started!`);
-    console.log(`📡 Network URL: http://${IP}:${PORT}`);
-    console.log(`💻 Local URL:   http://localhost:${PORT}\n`);
+    console.log(`💻 Local URL:   http://localhost:${PORT}`);
+    console.log(`📡 Network URLs:`);
+    IPs.forEach(ip => {
+        console.log(`   👉 http://${ip}:${PORT}`);
+    });
+    console.log(`\n💡 If it doesn't open on other devices, make sure they are on the same Wi-Fi!\n`);
 });
